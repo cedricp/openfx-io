@@ -1205,7 +1205,7 @@ GenericOCIO::changedParam(const InstanceChangedArgs& args,
         _outputSpaceChoice->getValueAtTime(args.time, outputSpaceIndex);
         string outputSpaceOld;
         getOutputColorspaceAtTime(args.time, outputSpaceOld);
-        string outputSpace = canonicalizeColorSpace(_config, _config->getColorSpaceNameByIndex(outputSpaceIndex));
+        string outputSpace = _config->getColorSpaceNameByIndex(outputSpaceIndex);//canonicalizeColorSpace(_config, _config->getColorSpaceNameByIndex(outputSpaceIndex));
         // avoid an infinite loop on bad hosts (for examples those which don't set args.reason correctly)
         if (outputSpace != outputSpaceOld) {
             _outputSpace->setValue(outputSpace);

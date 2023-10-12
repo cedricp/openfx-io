@@ -489,14 +489,14 @@ enum DNxHDCodecProfileEnum {
     eDNxHDCodecProfile36,
 };
 
-#define kParamDNxHDEncodeVideoRange "DNxHDEncodeVideoRange"
-#define kParamDNxHDEncodeVideoRangeLabel "DNxHD Output Range"
-#define kParamDNxHDEncodeVideoRangeHint                                                               \
+#define kParamEncodeVideoRange "EncodeVideoRange"
+#define kParamEncodeVideoRangeLabel "Output Range"
+#define kParamEncodeVideoRangeHint                                                               \
     "When encoding using DNxHD this is used to select between full scale data range "                 \
     "and 'video/legal' data range.\nFull scale data range is 0-255 for 8-bit and 0-1023 for 10-bit. " \
     "'Video/legal' data range is a reduced range, 16-240 for 8-bit and 64-960 for 10-bit."
-#define kParamDNxHDEncodeVideoRangeOptionFull "Full Range", "", "full"
-#define kParamDNxHDEncodeVideoRangeOptionVideo "Video Range", "", "video"
+#define kParamEncodeVideoRangeOptionFull "Full Range", "", "full"
+#define kParamEncodeVideoRangeOptionVideo "Video Range", "", "video"
 
 #define kParamHapFormat "HapFormat"
 #define kParamHapFormatLabel "Hap Format", "Only for the Hap codec, select the target format."
@@ -1055,7 +1055,7 @@ private:
     void updateVisibility();
     void checkCodec();
     void freeFormat();
-    void getColorInfo(AVColorPrimaries* color_primaries, AVColorTransferCharacteristic* color_trc) const;
+    void getColorInfo(AVColorPrimaries* color_primaries, AVColorTransferCharacteristic* color_trc, AVColorSpace* color_space) const;
     const AVOutputFormat* initFormat(bool reportErrors) const;
     bool initCodec(const AVOutputFormat* fmt, AVCodecID& outCodecId, const AVCodec*& outCodec) const;
 
@@ -1436,7 +1436,7 @@ WriteFFmpegPlugin::WriteFFmpegPlugin(OfxImageEffectHandle handle,
     _infoBitDepth = fetchIntParam(kParamInfoBitDepth);
     _infoBPP = fetchIntParam(kParamInfoBPP);
     _dnxhdCodecProfile = fetchChoiceParam(kParamDNxHDCodecProfile);
-    _encodeVideoRange = fetchChoiceParam(kParamDNxHDEncodeVideoRange);
+    _encodeVideoRange = fetchChoiceParam(kParamEncodeVideoRange);
     _hapFormat = fetchChoiceParam(kParamHapFormat);
 #if OFX_FFMPEG_TIMECODE
     _writeTimeCode = fetchBooleanParam(kParamWriteTimeCode);
@@ -1527,7 +1527,8 @@ WriteFFmpegPlugin::IsRGBFromShortName(const char* shortName,
 
 void
 WriteFFmpegPlugin::getColorInfo(AVColorPrimaries* color_primaries,
-                                AVColorTransferCharacteristic* color_trc) const
+                                AVColorTransferCharacteristic* color_trc,
+                                AVColorSpace* color_space) const
 {
     // AVCOL_PRI_RESERVED0   = 0,
     // AVCOL_PRI_BT709       = 1, ///< also ITU-R BT1361 / IEC 61966-2-4 / SMPTE RP177 Annex B
@@ -1574,8 +1575,10 @@ WriteFFmpegPlugin::getColorInfo(AVColorPrimaries* color_primaries,
         (selection == "srgb8")) { // srgb8 in spi-vfx
         *color_primaries = AVCOL_PRI_BT709;
         *color_trc = AVCOL_TRC_IEC61966_2_1; ///< IEC 61966-2-1 (sRGB or sYCC)
+        *color_space = AVCOL_SPC_BT709;
     } else if ((selection.find("Rec709") != string::npos) || // Rec709 in nuke-default
                (selection.find("rec709") != string::npos) || (selection == "Rec 709 Curve") || // natron
+               (selection.find("Rec.709") != string::npos) || // Rec.709 in ACES1.2
                (selection == "nuke_rec709") || // nuke_rec709 in blender
                (selection == "Rec.709 - Full") || // aces 1.0.0
                (selection == "out_rec709full") || // aces 1.0.0
@@ -1584,6 +1587,7 @@ WriteFFmpegPlugin::getColorInfo(AVColorPrimaries* color_primaries,
                (selection == "hd10")) { // hd10 in spi-anim and spi-vfx
         *color_primaries = AVCOL_PRI_BT709;
         *color_trc = AVCOL_TRC_BT709; ///< also ITU-R BT1361
+        *color_space = AVCOL_SPC_BT709;
     } else if ((selection.find("KodakLog") != string::npos) || (selection.find("kodaklog") != string::npos) || (selection.find("Cineon") != string::npos) || // Cineon in nuke-default, blender
                (selection.find("cineon") != string::npos) || (selection == "Cineon Log Curve") || // natron
                (selection == "REDlogFilm") || // REDlogFilm in aces 1.0.0
@@ -2446,8 +2450,10 @@ WriteFFmpegPlugin::configureVideoStream(const AVCodec* avCodec,
 
     avCodecContext->width = (_rodPixel.x2 - _rodPixel.x1);
     avCodecContext->height = (_rodPixel.y2 - _rodPixel.y1);
+    avCodecContext->color_range = _encodeVideoRange->getValue() == 0 ? AVColorRange::AVCOL_RANGE_JPEG : AVColorRange::AVCOL_RANGE_MPEG; // Default (full range 0-255)
+    avCodecContext->colorspace = AVColorSpace::AVCOL_SPC_UNSPECIFIED;
 
-    getColorInfo(&avCodecContext->color_primaries, &avCodecContext->color_trc);
+    getColorInfo(&avCodecContext->color_primaries, &avCodecContext->color_trc, &avCodecContext->colorspace);
 
     av_dict_set(&_formatContext->metadata, kMetaKeyApplication, kPluginIdentifier, 0);
 
@@ -2474,6 +2480,7 @@ WriteFFmpegPlugin::configureVideoStream(const AVCodec* avCodec,
         if (isHD) {
             avCodecContext->color_primaries = AVCOL_PRI_BT709; // kQTPrimaries_ITU_R709_2
             avCodecContext->color_trc = AVCOL_TRC_BT709; // kQTTransferFunction_ITU_R709_2
+            avCodecContext->colorspace = AVCOL_SPC_BT709;
         } else if (isPAL) {
             avCodecContext->color_primaries = AVCOL_PRI_BT470BG; // kQTPrimaries_EBU_3213
             avCodecContext->color_trc = AVCOL_TRC_BT709; // kQTTransferFunction_ITU_R709_2
@@ -3221,8 +3228,8 @@ WriteFFmpegPlugin::colourSpaceConvert(AVFrame* avFrameIn,
         if (FFmpeg::pixelFormatIsYUV(dstPixelFormat)) {
             // Set up the sws (SoftWareScaler) to convert colourspaces correctly, in the sws_scale function below
             const int colorspace = isRec709Format(height) ? SWS_CS_ITU709 : SWS_CS_ITU601;
-            const int dstRange = (avCodecContext->codec_id == AV_CODEC_ID_MJPEG || avCodecContext->codec_id == AV_CODEC_ID_MJPEGB) ? 1 : 0; // 0 = 16..235, 1 = 0..255
-
+            const int dstRange = _encodeVideoRange->getValue() == 0 ? 1 : 0;//(avCodecContext->codec_id == AV_CODEC_ID_MJPEG || avCodecContext->codec_id == AV_CODEC_ID_MJPEGB) ? 1 : 0; // 0 = 16..235, 1 = 0..255
+printf("Encode status = %i\n", dstRange);
             ret = sws_setColorspaceDetails(_convertCtx,
                                            sws_getCoefficients(SWS_CS_DEFAULT), // inv_table
                                            1, // srcRange - 0 = 16..235, 1 = 0..255
@@ -4336,7 +4343,8 @@ WriteFFmpegPlugin::updateVisibility()
     // has been selected.
     bool isdnxhd = (!strcmp(codecShortName.c_str(), "dnxhd"));
     _dnxhdCodecProfile->setIsSecretAndDisabled(!isdnxhd);
-    _encodeVideoRange->setIsSecretAndDisabled(!isdnxhd);
+    //_encodeVideoRange->setIsSecretAndDisabled(!isdnxhd);
+    _encodeVideoRange->setEnabled(true);
 
     bool ishap = (!strcmp(codecShortName.c_str(), "hap"));
     _hapFormat->setIsSecretAndDisabled(!ishap);
@@ -4650,7 +4658,9 @@ WriteFFmpegPlugin::onOutputFileChanged(const string& filename,
         // Unless otherwise specified, video files are assumed to be rec709.
         if (_ocio->hasColorspace("Rec709")) {
             // nuke-default
-            _ocio->setOutputColorspace("Rec709");
+            _ocio->setOutputColorspace("Output - Rec709");
+        }if (_ocio->hasColorspace("Rec.709")) {
+            _ocio->setOutputColorspace("Output - Rec.709");
         } else if (_ocio->hasColorspace("nuke_rec709")) {
             // blender
             _ocio->setOutputColorspace("nuke_rec709");
@@ -5522,11 +5532,11 @@ WriteFFmpegPluginFactory::describeInContext(ImageEffectDescriptor& desc,
         }
 
         {
-            ChoiceParamDescriptor* param = desc.defineChoiceParam(kParamDNxHDEncodeVideoRange);
-            param->setLabel(kParamDNxHDEncodeVideoRangeLabel);
-            param->setHint(kParamDNxHDEncodeVideoRangeHint);
-            param->appendOption(kParamDNxHDEncodeVideoRangeOptionFull);
-            param->appendOption(kParamDNxHDEncodeVideoRangeOptionVideo);
+            ChoiceParamDescriptor* param = desc.defineChoiceParam(kParamEncodeVideoRange);
+            param->setLabel(kParamEncodeVideoRangeLabel);
+            param->setHint(kParamEncodeVideoRangeHint);
+            param->appendOption(kParamEncodeVideoRangeOptionFull);
+            param->appendOption(kParamEncodeVideoRangeOptionVideo);
             param->setAnimates(false);
             param->setDefault(1);
             param->setParent(*group);
