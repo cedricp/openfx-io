@@ -1,0 +1,4 @@
+{
+    "cmake.installPrefix": "E:\\Applications\\NatronGit\\Plugins\\OFX\\Natron",
+    "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools"
+}

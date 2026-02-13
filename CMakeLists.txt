@@ -25,7 +25,7 @@ endif(${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_BINARY_DIR})
 ########################################################################
 # Project setup
 ########################################################################
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.5)
 project(OpenFXIO CXX)
 enable_testing()
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
@@ -59,8 +59,12 @@ find_package(OpenEXR)
 find_package(LibRaw)
 find_package(SeExpr2)
 
+message(STATUS "  SeExpr2:" ${SEEXPR2_LIBRARY})
 
-set(CMAKE_CXX_STANDARD 11)
+if(NOT ${OpenImageIO_VERSION} VERSION_LESS 2.3)
+  # C++14 required for OpenImageIO >= 2.3
+  set(CMAKE_CXX_STANDARD 14)
+endif()
 
 # Use -Ofast when applicable (implies -ffast-math)
 if("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -329,7 +333,8 @@ if(${OPENIMAGEIO_FOUND})
   )
   target_link_libraries(IO
     PUBLIC
-      ${OPENIMAGEIO_LIBRARIES}
+      OpenImageIO::OpenImageIO
+      OpenImageIO::OpenImageIO_Util
   )
   if(LibRaw_VERSION_STRING)
     target_compile_definitions(IO PRIVATE OFX_IO_USING_LIBRAW ${LibRaw_r_DEFINITIONS})
@@ -384,7 +389,7 @@ if(${SEEXPR2_FOUND})
   )
   target_link_libraries(IO
     PUBLIC
-      ${SEEXPR2_LIBRARIES}
+      ${SEEXPR2_LIBRARY}
   )
 else()
   message(STATUS "  Not adding SeExpr nodes")
@@ -397,7 +402,7 @@ set(OFX_ARCH UNKNOWN)
 # Win
 if(MINGW)
     set(OFX_ARCH "Win32")
-    if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64")
+    if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "(x86_64|AMD64)")
         set(OFX_ARCH "Win64")
     endif()
 # Visual Studio    
@@ -436,6 +441,8 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         endif()
     endif()
 endif()
+
+message(STATUS " Detected OFX_ARCH: ${OFX_ARCH}")
 
 set(OFX_ARCH_NAME ${OFX_ARCH} CACHE STRING "OpenFX target OS and architecture")
 if("${OFX_ARCH_NAME}" EQUAL "UNKNOWN")

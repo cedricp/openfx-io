@@ -44,6 +44,10 @@ GCC_DIAG_ON(unused-parameter)
 #ifdef OFX_IO_USING_LIBRAW
 // clang-format off
 GCC_DIAG_OFF(deprecated-declarations)
+// libraw_datastream.h 0.18.3 uses auto_ptr (not C++17 compliant)
+// Prevent inclusion:
+#define __LIBRAW_DATASTREAM_H
+class LibRaw_abstract_datastream;
 #include <libraw.h>
 #include <libraw_version.h>
 GCC_DIAG_ON(deprecated-declarations)
@@ -125,11 +129,15 @@ typedef ImageInput* ImageInputPtr;
 
 #define kPluginName "ReadOIIO"
 #define kPluginGrouping "Image/Readers"
-#define kPluginDescription                                                        \
-    "Read images using OpenImageIO.\n\n"                                          \
-    "Output is always Premultiplied (alpha is associated).\n\n"                   \
-    "The \"Image Premult\" parameter controls the file premultiplication state, " \
-    "and can be used to fix wrong file metadata (see the help for that parameter)."
+#define kPluginDescription                                                              \
+    "Read images using OpenImageIO.\n\n"                                                \
+    "Output is always Premultiplied (alpha is associated).\n\n"                         \
+    "The \"Image Premult\" parameter controls the file premultiplication state, "       \
+    "and can be used to fix wrong file metadata (see the help for that parameter).\n\n" \
+    "When reading an OpenEXR file with a dataWindow, it is converted to an OpenFX "     \
+    "region of definition by flipping the y axis (y axis goes down in OpenEXR, "        \
+    "up in OpenFX), and adding 1 pixel in every direction if the \"Edge Pixels\" "      \
+    "parameter says that a black border should be added."
 #define kPluginIdentifier "fr.inria.openfx.ReadOIIO"
 #define kPluginVersionMajor 2 // Incrementing this number means that you have broken backwards compatibility of the plug-in.
 #define kPluginVersionMinor 0 // Increment this when you have fixed a bug or made it faster.
@@ -491,7 +499,7 @@ private:
     void getConfig(ImageSpec* config) const;
 
     //// OIIO image cache
-    ImageCache* _cache;
+    std::shared_ptr<ImageCache> _cache;
 
     BooleanParam* _rawAutoBright;
     BooleanParam* _rawUseCameraWB;
@@ -2552,7 +2560,23 @@ ReadOIIOPlugin::decodePlane(const string& filename,
                 if (spec.tile_width == 0) {
                     // Read by scanlines
 
-                    if (!img->read_scanlines(ybeginClamped, // y begin
+                    // if (!img->read_scanlines(ybeginClamped, // y begin
+                    //                          yendClamped, // y end
+                    //                          zbegin, // z
+                    //                          chbegin, // chan begin
+                    //                          chend, // chan end
+                    //                          TypeDesc::FLOAT, // data type
+                    //                          topScanLineDataStartPtr,
+                    //                          xStride, // x stride
+                    //                          yStride)) { // y stride < make it invert Y;
+                    //     setPersistentMessage(Message::eMessageError, "", img->geterror());
+                    //     throwSuiteStatusException(kOfxStatFailed);
+
+                    //     return;
+                    // }
+                    
+                    if (!img->read_scanlines(0, 0,
+                                             ybeginClamped, // y begin
                                              yendClamped, // y end
                                              zbegin, // z
                                              chbegin, // chan begin
@@ -2625,7 +2649,26 @@ ReadOIIOPlugin::decodePlane(const string& filename,
 
                     // Pass the valid tile range and buffer to OIIO and decode with a negative Y stride from
                     // top to bottom
-                    if (!img->read_tiles(tiledXBegin, // x begin
+                    // if (!img->read_tiles(tiledXBegin, // x begin
+                    //                      tiledXEnd, // x end
+                    //                      tiledYBegin, // y begin
+                    //                      tiledYEnd, // y end
+                    //                      zbegin, // z begin
+                    //                      zend, // z end
+                    //                      chbegin, // chan begin
+                    //                      chend, // chan end
+                    //                      TypeDesc::FLOAT, // data type
+                    //                      tiledBuffer,
+                    //                      tiledBufferPixelSize, // x stride
+                    //                      -tiledBufferRowSize, // y stride < make it invert Y
+                    //                      AutoStride)) { // z stride
+                    //     setPersistentMessage(Message::eMessageError, "", img->geterror());
+                    //     throwSuiteStatusException(kOfxStatFailed);
+// 
+                    //     return;
+                    // }
+
+                    if (!img->read_tiles(0, 0 , tiledXBegin, // x begin
                                          tiledXEnd, // x end
                                          tiledYBegin, // y begin
                                          tiledYEnd, // y end
@@ -2952,7 +2995,7 @@ ReadOIIOPlugin::metadata(const string& filename)
             ss << std::endl;
         }
 
-        for (ImageIOParameterList::const_iterator p = subImages[sIt].extra_attribs.begin(); p != subImages[sIt].extra_attribs.end(); ++p) {
+        for (ParamValueList::const_iterator p = subImages[sIt].extra_attribs.begin(); p != subImages[sIt].extra_attribs.end(); ++p) {
             string s = subImages[sIt].metadata_val(*p, true);
             ss << "    " << p->name() << ": ";
             if (s == "1.#INF") {
@@ -3137,7 +3180,7 @@ ReadOIIOPluginFactory::unload()
 
 #ifdef OFX_READ_OIIO_SHARED_CACHE
     // get the shared image cache (may be shared with other plugins using OIIO)
-    ImageCache* sharedcache = ImageCache::create(true);
+    std::shared_ptr<ImageCache> sharedcache = ImageCache::create(true);
     // purge it
     // teardown is dangerous if there are other users
     ImageCache::destroy(sharedcache);

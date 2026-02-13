@@ -1374,7 +1374,7 @@ FFmpegFile::demuxAndDecode(AVFrame* avFrameOut, int64_t frame)
             found = true;
         }
         // If the current frame needs to be displayed longer than current_pts - prev_pts
-        else if ((decodedFrameIdx < targetFrameIdx) && (stream->ptsToFrame(decodedFrame->pts + decodedFrame->pkt_duration) > targetFrameIdx)) {
+        else if ((decodedFrameIdx < targetFrameIdx) && (stream->ptsToFrame(decodedFrame->pts + decodedFrame->duration) > targetFrameIdx)) {
             found = true;
         }
 
@@ -1443,7 +1443,7 @@ FFmpegFile::imageConvert(AVFrame* avFrameIn, AVFrame* avFrameOut)
 
     avFrameOut->pts = avFrameIn->pts;
     avFrameOut->pkt_dts = avFrameIn->pkt_dts;
-    avFrameOut->pkt_duration = avFrameIn->pkt_duration;
+    avFrameOut->duration = avFrameIn->duration;
 
     if (!avFrameOut->data[0]) {
         int res = av_image_alloc(avFrameOut->data, avFrameOut->linesize, avFrameOut->width, avFrameOut->height, dstPixFmt, 32);

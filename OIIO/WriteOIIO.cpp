@@ -22,7 +22,7 @@
  * Writes an image using the OpenImageIO library.
  */
 
-#include <cfloat> // DBL_MAX
+// #include <cfloat> // DBL_MAX
 
 #include "ofxsMacros.h"
 
@@ -126,7 +126,7 @@ enum ETuttlePluginComponents {
 #define kParamOutputZIPCompressionLevel "zipCompressionLevel"
 #define kParamOutputZIPCompressionLevelLabel "ZIP Compression Level"
 #define kParamOutputZIPCompressionLevelHint \
-    "Amount of compression when using Dreamworks Zip or Zips compression options. These Lossless formats are variable in level and can minimize the compression artifacts. Higher values will result in greater compression and likewise smaller file size, but increases the chance for artifacts. [EXR w/ Zip or Zips comp.]"
+    "Compression level for zip/deflate compression, on a scale from 1 (fastest, minimal compression) to 9 (slowest, maximal compression) [EXR, TIFF or Zfile w/ zip or zips comp.]"
 #define kParamOutputZIPCompressionLevelDefault 4
 
 #define kParamOutputOrientation "orientation"
@@ -935,7 +935,7 @@ WriteOIIOPlugin::beginEncodeParts(void* user_data,
         return;
     }
 
-    OIIO_NAMESPACE::TypeDesc oiioBitDepth;
+    TypeDesc oiioBitDepth;
     // size_t sizeOfChannel = 0;
     int bitsPerSample = 0;
     int finalBitDepth_i;
@@ -1015,8 +1015,16 @@ WriteOIIOPlugin::beginEncodeParts(void* user_data,
     string compression;
 
     switch ((EParamCompression)compression_i) {
-    case eParamCompressionAuto:
-        break;
+    case eParamCompressionAuto: {
+        // Set compression string for formats that only have a single compression type.
+        static const char* formats[] = {"jpeg", "webp", "heic", "avif", nullptr};
+        for (int i = 0; formats[i] != nullptr; ++i) {
+            if (strcmp(data->output->format_name(), formats[i]) == 0) {
+                compression = formats[i];
+                break;
+            }
+        }
+    } break;
     case eParamCompressionNone: // EXR, TIFF, IFF
         compression = "none";
         break;
