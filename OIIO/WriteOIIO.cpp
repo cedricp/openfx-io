@@ -22,7 +22,7 @@
  * Writes an image using the OpenImageIO library.
  */
 
-#include <cfloat> // DBL_MAX
+// #include <cfloat> // DBL_MAX
 
 #include "ofxsMacros.h"
 
@@ -935,7 +935,7 @@ WriteOIIOPlugin::beginEncodeParts(void* user_data,
         return;
     }
 
-    OIIO_NAMESPACE::TypeDesc oiioBitDepth;
+    TypeDesc oiioBitDepth;
     // size_t sizeOfChannel = 0;
     int bitsPerSample = 0;
     int finalBitDepth_i;
